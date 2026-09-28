@@ -89,6 +89,14 @@
 | Agent LLM | StepFun `step-3.7-flash` (云端推理) | 仅用于 Agent 编排，**不**用于图像/视频生成（保证多模态推理与图像生成解耦） |
 | 推理时计算 | 本机 Multi-Max H3 ~127s / 4s 视频 | 包含 KV cache 预热时间，重复任务可降至 ~80s |
 
+### 本地 vs 云端分工
+
+- **本机 GB10** 负责：图像/视频生成（MiniMax H3）、ComfyUI 调度、Skill 注册与执行、文件落盘
+- **云端 StepFun** 负责：Agent 编排（仅在 `openclaw agent --model stepfun/...` 调用时）
+- **vLLM / 本地 LLM** 角色：GB10 上同时部署了 `vllm-qwen36-prod`（Qwen3.6-35B-A3B NVFP4，tool-call-parser=qwen3_xml）作为本地 LLM 备选；本项目为 MiniMax H3 让出 115GB VRAM 临时停掉 vLLM，但 DEPLOY.md 提供一键重启命令。Agent LLM 可换成 `openclaw agent --model openai-compatible/...` 指向本地 vLLM，完全离线运行。
+
+![Architecture](docs/architecture.png)
+
 ### 真实跑通记录
 ```
 $ bash skills/minimax-h3-story/run.sh \
@@ -140,6 +148,42 @@ openclaw agent --model stepfun/step-3.7-flash \
 
 详见 [DEPLOY.md](DEPLOY.md) 和 [docs/DEMO.md](docs/DEMO.md)。
 
+## 多 Skill 编排
+
+本仓库内含 **2 个 Skill**，可串行编排形成完整 pipeline：
+
+```
+[中文描述] ─► h3-prompt-rewriter ─► [MiniMax H3 友好英文 prompt]
+                                          │
+                                          ▼
+                  minimax-h3-story ─► [mp4 + flac]
+```
+
+### 端到端 bash 编排示例（已验证）
+
+```bash
+# Step 1: 中文 prompt → 英文 prompt + stereo sound 标记
+REWRITTEN=$(bash skills/h3-prompt-rewriter/run.sh \
+  --input "鲸鱼在深海游泳，水面阳光，水母在远处发光" \
+  --style cinematic | python3 -c "import json,sys; print(json.load(sys.stdin)['full'])")
+
+# Step 2: 喂给 MiniMax H3
+bash skills/minimax-h3-story/run.sh \
+  --image assets/h3_frame.png \
+  --prompt "$REWRITTEN" \
+  --prefix multi_skill_demo --outdir /tmp/out --seed 42
+```
+
+**实测产物**（prompt_id `d7859fb3-a0b9-4598-ba42-73c1a44965fd`，135s）：
+- `multi_skill_demo_00001_.mp4`（视频）
+- `audio/multi_skill_demo_00001.flac`（立体声）
+
+### 为什么拆成两个 Skill
+
+- **职责单一**：`h3-prompt-rewriter` 只负责 prompt 工程，`minimax-h3-story` 只负责生成
+- **可独立测试**：每个 Skill 有自己的 4 文件范式（SKILL.md + workflow.json + helper.py + run.sh）
+- **可复用**：未来换 backbone（如 Wan / SVD），只改 `minimax-h3-story`，prompt rewriter 不动
+
 ## 技术栈
 
 | 层 | 选型 | 理由 |
@@ -161,12 +205,19 @@ minimax-h3-story/
 ├── LICENSE                                # MIT
 ├── docs/
 │   ├── DEMO.md                            # 录屏脚本
-│   └── architecture.png                   # 架构图（占位）
-├── skills/minimax-h3-story/
-│   ├── SKILL.md                           # YAML 头 + 触发词
-│   ├── workflow.json                      # 14 节点 MiniMax H3 workflow（参数化）
-│   ├── helper.py                          # ComfyUI HTTP API client（零依赖）
-│   └── run.sh                             # 入口脚本
+│   ├── architecture.png                   # 架构图（matplotlib 生成）
+│   └── gen_architecture.py                # 架构图生成脚本
+├── skills/
+│   ├── minimax-h3-story/                  # Skill 1：图像→视频+音频
+│   │   ├── SKILL.md                       # YAML 头 + 触发词
+│   │   ├── workflow.json                  # 14 节点 MiniMax H3 workflow（参数化）
+│   │   ├── helper.py                      # ComfyUI HTTP API client（零依赖）
+│   │   └── run.sh                         # 入口脚本
+│   └── h3-prompt-rewriter/                # Skill 2：中文→英文 MiniMax H3 prompt
+│       ├── SKILL.md                       # YAML 头 + 触发词
+│       ├── workflow.json                  # LLM prompt 模板 + JSON schema
+│       ├── helper.py                      # StepFun API client（零依赖）
+│       └── run.sh                         # 入口脚本
 └── assets/
     └── h3_frame.png                       # 演示用起始图（鲸鱼跃水场景）
 ```
@@ -189,4 +240,4 @@ MIT
 
 ---
 
-_最后更新：2026-09-28 07:01_
+_最后更新：2026-09-28 07:18（v2 — 加 h3-prompt-rewriter + 真实架构图 + DEPLOY LAN 提示 + 多 Skill 编排段）_

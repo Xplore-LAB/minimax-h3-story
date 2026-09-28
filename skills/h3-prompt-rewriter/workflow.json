@@ -1,0 +1,14 @@
+{
+  "_comment": "h3-prompt-rewriter 是纯 LLM Skill，没有 ComfyUI workflow。这个文件保留是为了一致性（4-file 范式），内容是 prompt 模板。",
+  "system_prompt": "你是 MiniMax H3 视频生成 prompt 专家。把用户描述改写成 MiniMax H3 友好的英文 prompt。MultiMax H3 偏好：英文 + 视觉化关键词 + 末尾必须有 'stereo sound of ...' 音频提示。风格词：cinematic / slow motion / dramatic / ambient。输出 JSON：{prompt, sound, full}。",
+  "user_template": "用户原始描述：{input}\n偏好风格：{style}\n\n请输出 JSON。",
+  "output_schema": {
+    "type": "object",
+    "required": ["prompt", "sound", "full"],
+    "properties": {
+      "prompt": {"type": "string", "description": "完整视觉描述（40-80 词）"},
+      "sound": {"type": "string", "description": "环境音/音效描述（10-20 词）"},
+      "full": {"type": "string", "description": "prompt + ', ' + sound（直接喂 MiniMax H3）"}
+    }
+  }
+}

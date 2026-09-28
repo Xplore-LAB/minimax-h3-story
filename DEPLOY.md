@@ -27,12 +27,22 @@ docker run -d \
   --name minimax-h3-comfyui \
   --gpus all \
   --restart unless-stopped \
-  -p 8188:8188 \
+  -p 0.0.0.0:8188:8188 \
   -v /mnt/minimax-h3/models:/mnt/minimax-h3/models:ro \
   -v /mnt/minimax-h3/output:/mnt/minimax-h3/output \
   -e COMFYUI_PORT=8188 \
   minimax/comfyui:0.30.0-minimax-h3
 ```
+
+> ⚠️ **绑定 0.0.0.0 才能 LAN 访问**。如果只写 `-p 8188:8188`，Docker 会默认绑 `127.0.0.1`，从其他电脑访问不到。本仓库当前容器已绑 `127.0.0.1`（部署时遗漏），跑完 smoke test 后如需 LAN 访问，按下条命令升级：
+> ```bash
+> docker stop minimax-h3-comfyui
+> docker run -d --name minimax-h3-comfyui --gpus all --restart unless-stopped \
+>   -p 0.0.0.0:8188:8188 \
+>   -v /mnt/minimax-h3/models:/mnt/minimax-h3/models:ro \
+>   -v /mnt/minimax-h3/output:/mnt/minimax-h3/output \
+>   minimax/comfyui:0.30.0-minimax-h3
+> ```
 
 **验证**：
 ```bash
